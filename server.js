@@ -3,7 +3,6 @@ const express = require('express');
 const axios = require('axios');
 const FormData = require('form-data');
 const Anthropic = require('@anthropic-ai/sdk');
-const { google } = require('googleapis');
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
@@ -16,10 +15,9 @@ const OPENAI_KEY = process.env.OPENAI_API_KEY; // optional, used only for voice-
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-5';
 const EXTRACTION_MODEL = process.env.EXTRACTION_MODEL || 'claude-haiku-4-5-20251001';
 
-const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID;
-const GOOGLE_SERVICE_ACCOUNT_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY;
-const SHEETS_CONFIGURED = !!(GOOGLE_SHEET_ID && GOOGLE_SERVICE_ACCOUNT_EMAIL && GOOGLE_PRIVATE_KEY);
+const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL;
+const APPS_SCRIPT_SECRET = process.env.APPS_SCRIPT_SECRET;
+const SHEETS_CONFIGURED = !!(APPS_SCRIPT_URL && APPS_SCRIPT_SECRET);
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -139,48 +137,25 @@ async function extractProfileIfComplete(history) {
   }
 }
 
-let sheetsClientPromise = null;
-function getSheetsClient() {
-  if (!sheetsClientPromise) {
-    const auth = new google.auth.JWT(
-      GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      null,
-      GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      ['https://www.googleapis.com/auth/spreadsheets']
-    );
-    sheetsClientPromise = Promise.resolve(google.sheets({ version: 'v4', auth }));
-  }
-  return sheetsClientPromise;
-}
-
 async function appendLeadToSheet(phone, profile) {
   if (!SHEETS_CONFIGURED) {
-    console.warn('Google Sheets not configured — skipping lead capture. See .env.example.');
+    console.warn('Apps Script lead capture not configured — skipping. See .env.example.');
     return;
   }
   try {
-    const sheets = await getSheetsClient();
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: GOOGLE_SHEET_ID,
-      range: 'Sheet1!A:H',
-      valueInputOption: 'USER_ENTERED',
-      insertDataOption: 'INSERT_ROWS',
-      requestBody: {
-        values: [[
-          new Date().toISOString(),
-          phone,
-          profile.name || '',
-          profile.city || '',
-          profile.languages || '',
-          profile.hometown || '',
-          profile.work_platform || '',
-          profile.work_city || '',
-        ]],
-      },
+    await axios.post(APPS_SCRIPT_URL, {
+      secret: APPS_SCRIPT_SECRET,
+      phone,
+      name: profile.name || '',
+      city: profile.city || '',
+      languages: profile.languages || '',
+      hometown: profile.hometown || '',
+      work_platform: profile.work_platform || '',
+      work_city: profile.work_city || '',
     });
     console.log(`Saved lead for ${phone} to Google Sheet.`);
   } catch (err) {
-    console.error('Google Sheets append failed:', err.message);
+    console.error('Apps Script append failed:', err.response?.data || err.message);
   }
 }
 

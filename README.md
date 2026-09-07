@@ -41,25 +41,30 @@ GitHub web UI — no git command line needed).
 
 Either way, add these environment variables in the platform's dashboard (from `.env.example`):
 `ANTHROPIC_API_KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `OPENAI_API_KEY` if using voice.
-Add `GOOGLE_SHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY` too if you set up lead
-capture in step 3 below (do that first if you want it wired in before you deploy).
+Add `APPS_SCRIPT_URL`, `APPS_SCRIPT_SECRET` too if you set up lead capture in step 2b below (do
+that first if you want it wired in before you deploy).
 
 Deploy. You'll get a public URL like `https://kaam-sakhi.up.railway.app`.
 
 ### 2b. Set up the lead-capture Google Sheet (optional but recommended)
-1. Create a blank Google Sheet. Add a header row: `Timestamp | Phone | Name | City | Languages | Hometown | Work Platform | Work City`.
-2. Copy the Sheet ID out of its URL (the long string between `/d/` and `/edit`) → this is `GOOGLE_SHEET_ID`.
-3. In [Google Cloud Console](https://console.cloud.google.com), create a project (or use an
-   existing one), enable the **Google Sheets API**, then create a **Service Account** under
-   IAM & Admin → Service Accounts.
-4. Open that service account → Keys → Add Key → JSON. This downloads a JSON file — open it, you
-   need two fields from it:
-   - `client_email` → this is `GOOGLE_SERVICE_ACCOUNT_EMAIL`
-   - `private_key` → this is `GOOGLE_PRIVATE_KEY` (paste the whole thing, `-----BEGIN...` and all)
-5. Back in your Google Sheet, click **Share** and give that same `client_email` **Editor** access.
-   (This step is easy to miss — without it, every save will silently fail.)
+Many Google Workspace orgs block creating service-account key files (`disableServiceAccountKeyCreation`
+policy) — you don't need one at all. Instead, this uses a small Apps Script "web app" that lives
+inside the Sheet itself, which is unaffected by that policy:
 
-Every time someone finishes onboarding, a new row appears in this sheet automatically.
+1. Create a blank Google Sheet. Add a header row: `Timestamp | Phone | Name | City | Languages | Hometown | Work Platform | Work City`.
+2. In that Sheet, go to **Extensions → Apps Script**. Delete the placeholder code and paste in
+   the contents of `apps-script.gs` from this project.
+3. In the pasted code, change `SHARED_SECRET` to your own random string (anything unguessable —
+   this is what stops a stranger from writing junk rows into your sheet if they ever find the URL).
+4. Click **Deploy → New deployment**. Type: **Web app**. Execute as: **Me**. Who has access:
+   **Anyone**. Click Deploy, and authorize it when prompted (it'll warn "Google hasn't verified
+   this app" — that's expected since it's your own script; click Advanced → Go to [project] (unsafe)).
+5. Copy the deployment URL (ends in `/exec`) → this is `APPS_SCRIPT_URL`.
+6. The random string you set in step 3 → this is `APPS_SCRIPT_SECRET`.
+
+Every time someone finishes onboarding, a new row appears in this sheet automatically. If you ever
+edit `apps-script.gs`, you'll need to create a new deployment (or "Manage deployments" → edit the
+existing one) for the change to take effect.
 
 ### 3. Connect Twilio to your server
 In the Twilio console → Messaging → Try it out → WhatsApp Sandbox Settings:
@@ -89,6 +94,7 @@ swap the sandbox number for your approved one.
 
 ## Files
 - `server.js` — the whole bot (Express webhook + Claude + optional Whisper transcription)
+- `apps-script.gs` — paste into your Google Sheet's Script Editor for lead capture (no GCP/service account needed)
 - `package.json` — dependencies
 - `.env.example` — copy to `.env` locally, or paste into your host's env var settings
 - `Procfile` — tells Render/Railway/Heroku how to start the app
